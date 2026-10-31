@@ -8,6 +8,11 @@ from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnec
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+try:
+    from agents import generate_with_llm
+except ImportError:
+    generate_with_llm = None
+
 PROJECT_ID = 1
 AGENT_DELAY_SECONDS = 6  # simulated agent work time
 
@@ -305,7 +310,17 @@ async def run_agent(agent_id, ctx, instruction, redirect_of):
         await asyncio.sleep(AGENT_DELAY_SECONDS)
     except asyncio.CancelledError:
         return
-    result = generate(agent_id, ctx, instruction)
+    result = None
+    if generate_with_llm:
+        try:
+            result = await asyncio.wait_for(
+                asyncio.to_thread(generate_with_llm, agent_id, ctx, instruction),
+                timeout=25)
+        except Exception as e:
+            print(f"LLM failed, using template fallback: {e}")
+            result = None
+    if result is None:
+        result = generate(agent_id, ctx, instruction)  # template fallback
     await submit_proposal(agent_id, ctx, result, instruction, redirect_of)
 
 
@@ -431,6 +446,12 @@ async def agents_status(project_id: int = Query(1)):
 
 
 @app.post("/agents/{agent_id}/start")
+
+def clean_text(text):
+    t = (text or "").strip()
+    return None if t.lower() in ("", "string") else t
+
+
 async def start_agent(agent_id: str, body: Optional[StartBody] = None):
     body = body or StartBody()
     check_project(body.project_id)

@@ -18,6 +18,7 @@ load_dotenv(HERE / ".env")
 log = logging.getLogger("orbit.agents")
 
 DEFAULT_MODEL = "claude-haiku-5-5"
+DEFAULT_GEMINI_MODEL = "gemini-2.5-flash"
 MAX_TOKENS = 3000
 TIMEOUT_SECONDS = 20
 KEYS = ("type", "title", "content", "rationale", "depends_on_node_ids")
@@ -93,6 +94,21 @@ def _call_llm(system, user):
     key = os.getenv("LLM_API_KEY")
     if not key:
         raise LLMError("LLM_API_KEY is not set (and LLM_MODE is not 'mock').")
+    if os.getenv("LLM_PROVIDER", "").lower() == "gemini":
+        import httpx
+        model = os.getenv("LLM_MODEL", DEFAULT_GEMINI_MODEL)
+        r = httpx.post(
+            f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
+            headers={"x-goog-api-key": key},
+            json={"systemInstruction": {"parts": [{"text": system}]},
+                  "contents": [{"role": "user", "parts": [{"text": user}]}],
+                  "generationConfig": {"maxOutputTokens": MAX_TOKENS,
+                                       "responseMimeType": "application/json",
+                                       "thinkingConfig": {"thinkingBudget": 0}}},
+            timeout=TIMEOUT_SECONDS)
+        r.raise_for_status()
+        parts = r.json()["candidates"][0]["content"]["parts"]
+        return "".join(p.get("text", "") for p in parts)
     import anthropic
     client = anthropic.Anthropic(api_key=key, timeout=TIMEOUT_SECONDS, max_retries=0)
     msg = client.messages.create(

@@ -1,12 +1,17 @@
 import asyncio
 import copy
 import html as html_lib
+import logging
 from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+
+from agents import generate_with_llm
+
+log = logging.getLogger("orbit")
 
 PROJECT_ID = 1
 AGENT_DELAY_SECONDS = 6  # simulated agent work time
@@ -305,7 +310,12 @@ async def run_agent(agent_id, ctx, instruction, redirect_of):
         await asyncio.sleep(AGENT_DELAY_SECONDS)
     except asyncio.CancelledError:
         return
-    result = generate(agent_id, ctx, instruction)
+    try:
+        result = await asyncio.wait_for(
+            asyncio.to_thread(generate_with_llm, agent_id, ctx, instruction), 25)
+    except Exception as e:
+        log.warning("LLM failed: %s", e)
+        result = generate(agent_id, ctx, instruction)
     await submit_proposal(agent_id, ctx, result, instruction, redirect_of)
 
 

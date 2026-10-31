@@ -1,0 +1,11 @@
+{
+  "type": "persona",
+  "title": "Reliability-first student persona",
+  "content": "Persona: Meera, 20, third-year student with back-to-back labs and a hard 30-minute break. She will pay a little more to be sure food arrives on time and is safe.\nNeeds: fast delivery, live tracking, verified vendors, hygiene confidence.\nPains: late orders, cold food, unknown kitchens, no way to see where the order is.\nMessaging:\n- Headline: Hot food at your hostel in 15 minutes.\n- Proof: ratings, verified-vendor badges, on-time guarantee.\n- Offer: live tracking on every order.\n- Tone: calm, confident, reassuring.",
+  "rationale": "Positioning 'Fast and trusted' for college students means speed and proof must lead, so the persona stresses reliability, tracking and vendor verification.",
+  "depends_on_node_ids": [
+    "r1",
+    "r2",
+    "r4"
+  ]
+}

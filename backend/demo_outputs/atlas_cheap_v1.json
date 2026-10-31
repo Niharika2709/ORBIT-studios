@@ -1,0 +1,11 @@
+{
+  "type": "persona",
+  "title": "Budget-first student persona",
+  "content": "Persona: Aarav, 19, first-year college student living in a hostel. Monthly food budget under Rs 3,000, splits orders with roommates, checks prices before anything else.\nNeeds: lowest price per meal, combo deals, free-delivery thresholds, student discounts.\nPains: surprise delivery fees, small portions for the price, apps that hide the total until checkout.\nMessaging:\n- Headline: The cheapest meals on campus.\n- Proof: show the saving next to every price.\n- Offer: combos and free delivery over Rs 150.\n- Tone: friendly, direct, a little cheeky.",
+  "rationale": "Positioning 'Cheap' for college students means price and savings must lead every message, so the persona is framed around budget pain points.",
+  "depends_on_node_ids": [
+    "r1",
+    "r2",
+    "r4"
+  ]
+}

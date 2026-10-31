@@ -1,8 +1,8 @@
 {
   "project": {"id": "project_001", "name": "CampusEats", "version": 1},
   "users": [
-    {"id": "aarav", "name": "Aarav", "role": "Founder"},
-    {"id": "meera", "name": "Meera", "role": "Product Designer"}
+    {"id": "niharika", "name": "Niharika", "role": "Founder"},
+    {"id": "vaibhav", "name": "Vaibhav", "role": "Product Designer"}
   ],
   "agents": [
     {"id": "persona_agent", "name": "Persona Agent", "status": "idle", "last_seen_event_id": 0},
@@ -11,12 +11,13 @@
   "requirements": [
     {"id": "r1", "text": "Target users: college students", "version": 1, "depends_on": []},
     {"id": "r2", "text": "Positioning: cheap", "version": 1, "depends_on": []},
-    {"id": "r3", "text": "Hero message", "version": 1, "depends_on": ["r2"]},
-    {"id": "r4", "text": "Persona messaging", "version": 1, "depends_on": ["r1", "r2"]},
-    {"id": "r5", "text": "Demo page", "version": 1, "depends_on": ["r3", "r4"]}
+    {"id": "r3", "text": "Hero message: Cheapest meals on campus", "version": 1, "depends_on": ["r2"]},
+    {"id": "r4", "text": "Persona messaging: budget-focused student", "version": 1, "depends_on": ["r1", "r2"]},
+    {"id": "r5", "text": "Demo page: deals-first landing page", "version": 1, "depends_on": ["r3", "r4"]}
   ],
   "proposals": [],
   "decisions": [],
   "events": [],
-  "artifact_versions": []
+  "artifact_versions": [],
+  "current_artifact": {"version": 0, "html": "<h1>CampusEats</h1><p>Waiting for the first approved proposal.</p>"}
 }

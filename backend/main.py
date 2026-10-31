@@ -1,7 +1,6 @@
 import asyncio
 import copy
 import html as html_lib
-import logging
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -9,9 +8,12 @@ from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnec
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from agents import generate_with_llm
-
-log = logging.getLogger("orbit")
+# Person 2's LLM hook. If agents.py is missing or broken, templates are used.
+try:
+    from agents import generate_with_llm
+except Exception as e:
+    generate_with_llm = None
+    print(f"agents.py not loaded, using templates: {e}")
 
 PROJECT_ID = 1
 AGENT_DELAY_SECONDS = 6  # simulated agent work time
@@ -27,6 +29,12 @@ app.add_middleware(
 
 def now():
     return datetime.now(timezone.utc).isoformat()
+
+
+def clean_text(text):
+    """Treat empty text and Swagger's default 'string' as no instruction."""
+    t = (text or "").strip()
+    return None if t.lower() in ("", "string") else t
 
 
 # ---------------------------------------------------------------- seed state
@@ -217,7 +225,7 @@ def build_packet(agent_id):
 
 
 # -------------------------------------------------- agent content generation
-# TEMPLATE LOGIC. Person 2 can replace generate() with real LLM calls.
+# TEMPLATE LOGIC (fallback). Real LLM output comes from agents.py.
 HTML_TEMPLATE = """<!DOCTYPE html>
 <html><head><meta charset="utf-8"><title>CampusEats</title>
 <style>
@@ -310,12 +318,17 @@ async def run_agent(agent_id, ctx, instruction, redirect_of):
         await asyncio.sleep(AGENT_DELAY_SECONDS)
     except asyncio.CancelledError:
         return
-    try:
-        result = await asyncio.wait_for(
-            asyncio.to_thread(generate_with_llm, agent_id, ctx, instruction), 25)
-    except Exception as e:
-        log.warning("LLM failed: %s", e)
-        result = generate(agent_id, ctx, instruction)
+    result = None
+    if generate_with_llm:
+        try:
+            result = await asyncio.wait_for(
+                asyncio.to_thread(generate_with_llm, agent_id, ctx, instruction),
+                timeout=25)
+        except Exception as e:
+            print(f"LLM failed, using template fallback: {e}")
+            result = None
+    if result is None:
+        result = generate(agent_id, ctx, instruction)  # template fallback
     await submit_proposal(agent_id, ctx, result, instruction, redirect_of)
 
 
@@ -445,7 +458,7 @@ async def start_agent(agent_id: str, body: Optional[StartBody] = None):
     body = body or StartBody()
     check_project(body.project_id)
     require_agent(agent_id)
-    agent = await launch_agent(agent_id, body.actor, body.task)
+    agent = await launch_agent(agent_id, body.actor, clean_text(body.task))
     return {"agent": public_agent(agent)}
 
 

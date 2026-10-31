@@ -1,10 +1,24 @@
-.env
-.env.*
-!.env.example
-__pycache__/
-*.py[cod]
-.venv/
+# Python
 venv/
+.venv/
+__pycache__/
+*.pyc
+*.db
+*.sqlite3
+
+# Node / frontend
 node_modules/
-.DS_Store
+dist/
+build/
+.vite/
+
+# Environment and secrets
+.env
+.env.local
+
+# Editor and OS
 .vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.log

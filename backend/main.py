@@ -8,10 +8,12 @@ from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnec
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+# Person 2's LLM hook. If agents.py is missing or broken, templates are used.
 try:
     from agents import generate_with_llm
-except ImportError:
+except Exception as e:
     generate_with_llm = None
+    print(f"agents.py not loaded, using templates: {e}")
 
 PROJECT_ID = 1
 AGENT_DELAY_SECONDS = 6  # simulated agent work time
@@ -27,6 +29,12 @@ app.add_middleware(
 
 def now():
     return datetime.now(timezone.utc).isoformat()
+
+
+def clean_text(text):
+    """Treat empty text and Swagger's default 'string' as no instruction."""
+    t = (text or "").strip()
+    return None if t.lower() in ("", "string") else t
 
 
 # ---------------------------------------------------------------- seed state
@@ -217,7 +225,7 @@ def build_packet(agent_id):
 
 
 # -------------------------------------------------- agent content generation
-# TEMPLATE LOGIC. Person 2 can replace generate() with real LLM calls.
+# TEMPLATE LOGIC (fallback). Real LLM output comes from agents.py.
 HTML_TEMPLATE = """<!DOCTYPE html>
 <html><head><meta charset="utf-8"><title>CampusEats</title>
 <style>
@@ -446,17 +454,11 @@ async def agents_status(project_id: int = Query(1)):
 
 
 @app.post("/agents/{agent_id}/start")
-
-def clean_text(text):
-    t = (text or "").strip()
-    return None if t.lower() in ("", "string") else t
-
-
 async def start_agent(agent_id: str, body: Optional[StartBody] = None):
     body = body or StartBody()
     check_project(body.project_id)
     require_agent(agent_id)
-    agent = await launch_agent(agent_id, body.actor, body.task)
+    agent = await launch_agent(agent_id, body.actor, clean_text(body.task))
     return {"agent": public_agent(agent)}
 
 

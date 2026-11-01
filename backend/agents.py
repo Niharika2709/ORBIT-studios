@@ -7,7 +7,9 @@ hand-written files in demo_outputs/ (no API call, same validators).
 import json
 import logging
 import os
+import random
 import re
+import time
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -18,9 +20,14 @@ load_dotenv(HERE / ".env")
 log = logging.getLogger("orbit.agents")
 
 DEFAULT_MODEL = "claude-haiku-5-5"
-DEFAULT_GEMINI_MODEL = "gemini-2.5-flash"
+DEFAULT_GEMINI_MODEL = "gemini-3.5-flash"
 MAX_TOKENS = 3000
 TIMEOUT_SECONDS = 20
+RETRY_STATUSES = {429, 500, 502, 503, 504}
+MAX_ATTEMPTS = 3
+RETRY_BASE_DELAY = 1.0     # 1s, then 2s
+RETRY_MAX_DELAY = 4.0      # cap on any Retry-After value
+RETRY_BUDGET_SECONDS = 8   # don't start a retry after this much time has passed
 KEYS = ("type", "title", "content", "rationale", "depends_on_node_ids")
 TYPES = {"atlas": "persona", "nova": "demo_html"}
 DEPENDS_ON = {"atlas": ["r1", "r2", "r4"], "nova": ["r3", "r5"]}
@@ -89,6 +96,39 @@ def build_prompt(agent_id, ctx, instruction):
 
 
 # ---------------------------------------------------------------- provider
+def _retry_delay(response, attempt):
+    """Seconds to wait before retry number `attempt` (1-based): Retry-After if sent, else backoff + jitter."""
+    try:
+        wait = float(response.headers.get("retry-after", ""))
+    except (TypeError, ValueError):
+        wait = RETRY_BASE_DELAY * 2 ** (attempt - 1)
+    return min(wait, RETRY_MAX_DELAY) + random.uniform(0, 0.25)
+
+
+def _post_with_retry(httpx, url, **kwargs):
+    """POST that retries transient 429/5xx responses (e.g. Gemini 'high demand' 503).
+
+    A retry only starts while less than RETRY_BUDGET_SECONDS have elapsed, so a
+    retried call still fits inside the caller's 25s wait (main.run_agent).
+    Non-transient errors (400/401/403/404...) raise at once.
+    """
+    start = time.monotonic()
+    attempt = 0
+    while True:
+        attempt += 1
+        r = httpx.post(url, timeout=TIMEOUT_SECONDS, **kwargs)
+        if r.status_code not in RETRY_STATUSES or attempt >= MAX_ATTEMPTS:
+            r.raise_for_status()
+            return r
+        delay = _retry_delay(r, attempt)
+        if time.monotonic() - start + delay > RETRY_BUDGET_SECONDS:
+            r.raise_for_status()  # out of retry budget
+            return r
+        log.warning("LLM returned %s, retrying in %.1fs (attempt %d/%d)",
+                    r.status_code, delay, attempt, MAX_ATTEMPTS)
+        time.sleep(delay)
+
+
 def _call_llm(system, user):
     """The only provider-specific code. Returns raw model text."""
     key = os.getenv("LLM_API_KEY")
@@ -97,16 +137,15 @@ def _call_llm(system, user):
     if os.getenv("LLM_PROVIDER", "").lower() == "gemini":
         import httpx
         model = os.getenv("LLM_MODEL", DEFAULT_GEMINI_MODEL)
-        r = httpx.post(
+        r = _post_with_retry(
+            httpx,
             f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
             headers={"x-goog-api-key": key},
             json={"systemInstruction": {"parts": [{"text": system}]},
                   "contents": [{"role": "user", "parts": [{"text": user}]}],
                   "generationConfig": {"maxOutputTokens": MAX_TOKENS,
                                        "responseMimeType": "application/json",
-                                       "thinkingConfig": {"thinkingBudget": 0}}},
-            timeout=TIMEOUT_SECONDS)
-        r.raise_for_status()
+                                       "thinkingConfig": {"thinkingBudget": 0}}})
         parts = r.json()["candidates"][0]["content"]["parts"]
         return "".join(p.get("text", "") for p in parts)
     import anthropic

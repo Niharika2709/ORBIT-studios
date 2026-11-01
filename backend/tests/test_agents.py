@@ -142,3 +142,68 @@ def test_mock_mode_no_key(monkeypatch, agent):
 def test_no_key_no_mock_raises():
     with pytest.raises(agents.LLMError):
         agents.generate_with_llm("atlas", ctx(), None)
+
+
+# ------------------------------------------------------------------ retries
+class FakeResp:
+    def __init__(self, status, headers=None):
+        self.status_code = status
+        self.headers = headers or {}
+
+    def raise_for_status(self):
+        if self.status_code >= 400:
+            raise RuntimeError(f"HTTP {self.status_code}")
+
+
+class FakeHttpx:
+    def __init__(self, *statuses):
+        self.statuses = list(statuses)
+        self.calls = 0
+
+    def post(self, url, **kw):
+        self.calls += 1
+        s = self.statuses.pop(0)
+        return FakeResp(s[0], s[1]) if isinstance(s, tuple) else FakeResp(s)
+
+
+@pytest.fixture
+def sleeps(monkeypatch):
+    waited = []
+    monkeypatch.setattr(agents.time, "sleep", waited.append)
+    return waited
+
+
+def test_retry_503_then_success(sleeps):
+    h = FakeHttpx(503, 503, 200)
+    assert agents._post_with_retry(h, "u").status_code == 200
+    assert h.calls == 3 and len(sleeps) == 2
+    assert 1.0 <= sleeps[0] < 1.3 and 2.0 <= sleeps[1] < 2.3  # exponential backoff
+
+
+def test_retry_gives_up_after_max_attempts(sleeps):
+    h = FakeHttpx(503, 503, 503)
+    with pytest.raises(RuntimeError, match="503"):
+        agents._post_with_retry(h, "u")
+    assert h.calls == agents.MAX_ATTEMPTS
+
+
+@pytest.mark.parametrize("status", [400, 401, 403, 404])
+def test_no_retry_on_client_errors(sleeps, status):
+    h = FakeHttpx(status)
+    with pytest.raises(RuntimeError):
+        agents._post_with_retry(h, "u")
+    assert h.calls == 1 and not sleeps
+
+
+def test_retry_after_header_is_capped(sleeps):
+    h = FakeHttpx((429, {"retry-after": "60"}), 200)
+    agents._post_with_retry(h, "u")
+    assert agents.RETRY_MAX_DELAY <= sleeps[0] < agents.RETRY_MAX_DELAY + 0.3
+
+
+def test_no_retry_when_budget_spent(sleeps, monkeypatch):
+    monkeypatch.setattr(agents, "RETRY_BUDGET_SECONDS", 0.5)  # first backoff (>=1s) exceeds it
+    h = FakeHttpx(503, 200)
+    with pytest.raises(RuntimeError, match="503"):
+        agents._post_with_retry(h, "u")
+    assert h.calls == 1 and not sleeps

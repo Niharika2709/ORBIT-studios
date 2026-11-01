@@ -323,7 +323,7 @@ async def run_agent(agent_id, ctx, instruction, redirect_of):
         try:
             result = await asyncio.wait_for(
                 asyncio.to_thread(generate_with_llm, agent_id, ctx, instruction),
-                timeout=25)
+                timeout=40)
         except Exception as e:
             print(f"LLM failed, using template fallback: {e}")
             result = None

@@ -21,7 +21,7 @@ log = logging.getLogger("orbit.agents")
 
 DEFAULT_MODEL = "claude-haiku-5-5"
 DEFAULT_GEMINI_MODEL = "gemini-3.5-flash"
-MAX_TOKENS = 3000
+MAX_TOKENS = 8192
 TIMEOUT_SECONDS = 20
 RETRY_STATUSES = {429, 500, 502, 503, 504}
 MAX_ATTEMPTS = 3
@@ -128,6 +128,12 @@ def _post_with_retry(httpx, url, **kwargs):
                     r.status_code, delay, attempt, MAX_ATTEMPTS)
         time.sleep(delay)
 
+def _thinking_config(model):
+    """Gemini 3.x takes thinkingLevel; older models take thinkingBudget (0 = off)."""
+    if model.startswith("gemini-3"):
+        return {"thinkingLevel": "low"}
+    return {"thinkingBudget": 0}
+
 
 def _call_llm(system, user):
     """The only provider-specific code. Returns raw model text."""
@@ -145,7 +151,7 @@ def _call_llm(system, user):
                   "contents": [{"role": "user", "parts": [{"text": user}]}],
                   "generationConfig": {"maxOutputTokens": MAX_TOKENS,
                                        "responseMimeType": "application/json",
-                                       "thinkingConfig": {"thinkingBudget": 0}}})
+                                        "thinkingConfig": _thinking_config(model)}})
         parts = r.json()["candidates"][0]["content"]["parts"]
         return "".join(p.get("text", "") for p in parts)
     import anthropic
